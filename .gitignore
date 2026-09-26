@@ -24,9 +24,8 @@ $tf/
 # Runtime generated
 config.json
 
-# Docs & bundled plugin archive
+# Docs
 docs/
-src/ISFPConnectLite/plugin/*.zip
 
 # Logs
 *.log
