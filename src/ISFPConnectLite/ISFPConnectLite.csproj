@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <Resource Include="assets\logo.png" />
+    <Resource Include="assets\notify.wav" Condition="Exists('assets\notify.wav')" />
     <None Update="README.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

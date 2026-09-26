@@ -22,6 +22,8 @@ public sealed class NetworkModel : IDisposable
     public event Action<string>? Log;
     public event Action? RosterChanged;
     public event Action<FlightData>? LocalFlightData;
+    /// <summary>Any FSD text message received (from, message). Fires regardless of message panel state.</summary>
+    public event Action<string, string>? TextReceived;
 
     public string MyCallsign { get; private set; } = "";
     public string MyCid { get; private set; } = "";
@@ -60,6 +62,7 @@ public sealed class NetworkModel : IDisposable
         session.Log += m => Log?.Invoke(m);
         session.PositionPacketReceived += OnFsdPacket;
         session.PlaneInfoRequested += OnPlaneInfoRequested;
+        session.TextReceived += (from, msg) => TextReceived?.Invoke(from, msg);
         Fsd = session;
         await session.ConnectAsync();
         session.StartReporting();

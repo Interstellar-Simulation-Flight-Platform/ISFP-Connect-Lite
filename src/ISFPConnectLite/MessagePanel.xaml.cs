@@ -9,31 +9,44 @@ namespace ISFPConnectLite;
 public partial class MessagePanel : Window
 {
     private readonly NetworkModel _net;
-    private readonly ObservableCollection<MsgItem> _items = new();
+    private ObservableCollection<MsgItem> _items = new();
     private string _lastSender = "";
 
-    public MessagePanel(NetworkModel net)
+    public MessagePanel(NetworkModel net, System.Collections.ObjectModel.ObservableCollection<MsgItem> history)
     {
         InitializeComponent();
         _net = net;
+        // 绑定 MainWindow 维护的唯一历史集合：
+        // 新消息由 MainWindow.OnNetworkTextReceived 统一写入，ObservableCollection
+        // 绑定自动刷新本列表（含面板关闭期间收到的消息）
+        _items = history;
         MsgList.ItemsSource = _items;
 
-        if (net.Fsd != null)
+        TargetText.Text = $"  ·  {net.MyCallsign}";
+
+        // 打开时定位到最新消息
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
         {
-            net.Fsd.TextReceived += OnTextReceived;
-            TargetText.Text = $"  ·  {net.MyCallsign}";
-            Closed += (_, _) => net.Fsd.TextReceived -= OnTextReceived;
-        }
+            if (_items.Count > 0)
+            {
+                MsgList.ScrollIntoView(_items[^1]);
+                MsgList.UpdateLayout();
+                MsgList.ScrollIntoView(_items[^1]); // 二次调用确保虚拟化容器生成后仍在底部
+            }
+        });
     }
 
-    private void OnTextReceived(string from, string message)
+    /// <summary>新消息加入历史后滚动到底部（MainWindow 写入后调用）。</summary>
+    public void NotifyAppended()
     {
         Dispatcher.BeginInvoke(() =>
         {
-            _items.Add(new MsgItem { Sender = from, Body = message, TimeStr = DateTime.Now.ToString("HH:mm:ss") });
-            _lastSender = from;
-            TargetBox.Text = from;
-            MsgList.ScrollIntoView(MsgList.Items[^1]);
+            if (_items.Count > 0)
+            {
+                _lastSender = _items[^1].Sender;
+                TargetBox.Text = _items[^1].Sender;
+                MsgList.ScrollIntoView(MsgList.Items[^1]);
+            }
         });
     }
 

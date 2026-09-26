@@ -31,7 +31,7 @@
             </Grid>
 
             <!-- message list -->
-            <ListBox x:Name="MsgList" Grid.Row="1" Style="{StaticResource MsgList}"
+            <ListBox x:Name="MsgList" Grid.Row="1" Style="{StaticResource MsgListBoxSlim}"
                      ItemContainerStyle="{StaticResource MsgItem}">
                 <ListBox.ItemTemplate>
                     <DataTemplate>

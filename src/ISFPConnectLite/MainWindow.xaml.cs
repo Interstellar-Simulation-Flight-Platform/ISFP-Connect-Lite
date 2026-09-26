@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.IO;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using ISFPConnectLite.Fsd;
@@ -13,6 +14,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _toastTimer = new();
     private AppSettings _settings = new();
     private MessagePanel? _msgPanel;
+    private readonly System.Collections.ObjectModel.ObservableCollection<MsgItem> _msgHistory = new();
     private bool _busy;
     private int _lastFreqKhz;
 
@@ -35,6 +37,7 @@ public partial class MainWindow : Window
         _net.Xlink.FlightData += OnFlightData;
         _net.LocalFlightData += OnFlightData;
         _net.RosterChanged += () => Post(UpdateRoster);
+        _net.TextReceived += OnNetworkTextReceived;
 
         _rosterTimer.Interval = TimeSpan.FromSeconds(3);
         _rosterTimer.Tick += async (_, _) => await _net.PushRosterAsync();
@@ -193,7 +196,7 @@ public partial class MainWindow : Window
     {
         if (_msgPanel == null || !_msgPanel.IsLoaded)
         {
-            _msgPanel = new MessagePanel(_net) { Owner = this };
+            _msgPanel = new MessagePanel(_net, _msgHistory) { Owner = this };
             _msgPanel.Closed += (_, _) => MsgBtn.IsChecked = false;
             _msgPanel.Show();
         }
@@ -205,6 +208,81 @@ public partial class MainWindow : Window
         if (_msgPanel != null && _msgPanel.IsLoaded)
             _msgPanel.Close();
         _msgPanel = null;
+    }
+
+    // ---------- new message notification ----------
+
+    private System.Media.SoundPlayer? _notifySound;
+
+    /// <summary>Lazy-load embedded notify.wav; falls back to system sound if missing.</summary>
+    private System.Media.SoundPlayer NotifySound
+    {
+        get
+        {
+            if (_notifySound == null)
+            {
+                try
+                {
+                    var uri = new Uri("pack://application:,,,/assets/notify.wav", UriKind.Absolute);
+                    var sri = Application.GetResourceStream(uri);
+                    if (sri?.Stream != null)
+                    {
+                        // 复制到独立 MemoryStream：资源流可能延迟加载/被回收，SoundPlayer 需要
+                        // 一个始终可读的流
+                        var ms = new MemoryStream();
+                        sri.Stream.CopyTo(ms);
+                        ms.Position = 0;
+                        _notifySound = new System.Media.SoundPlayer(ms);
+                    }
+                }
+                catch { }
+                _notifySound ??= new System.Media.SoundPlayer();
+            }
+            return _notifySound;
+        }
+    }
+
+    /// <summary>
+    /// 唯一的消息历史写入点：所有 FSD 文本消息先进历史，再按面板状态决定是否响铃提醒。
+    /// MessagePanel 通过绑定 _msgHistory 自动显示新消息（包括面板关闭期间收到的）。
+    /// </summary>
+    private void OnNetworkTextReceived(string from, string message)
+    {
+        Post(() =>
+        {
+            var item = new MsgItem
+            {
+                Sender = from,
+                Body = message,
+                TimeStr = DateTime.Now.ToString("HH:mm:ss")
+            };
+
+            bool panelOpen = _msgPanel != null && _msgPanel.IsLoaded;
+
+            _msgHistory.Add(item);
+            if (_msgHistory.Count > 500) _msgHistory.RemoveAt(0);
+
+            if (panelOpen)
+            {
+                _msgPanel?.NotifyAppended();
+                return; // user can see it live via binding
+            }
+
+            bool played = false;
+            try
+            {
+                NotifySound.Play();
+                played = true;
+            }
+            catch { }
+
+            if (!played)
+            {
+                try { System.Media.SystemSounds.Exclamation.Play(); } catch { }
+            }
+            string preview = message.Length > 60 ? message[..60] + "…" : message;
+            ShowToast($"💬 {from}: {preview}");
+        });
     }
 
     // ---------- always on top ----------
