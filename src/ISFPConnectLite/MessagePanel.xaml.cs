@@ -27,12 +27,16 @@ public partial class MessagePanel : Window
         // 打开时定位到最新消息
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
         {
-            if (_items.Count > 0)
+            try
             {
-                MsgList.ScrollIntoView(_items[^1]);
-                MsgList.UpdateLayout();
-                MsgList.ScrollIntoView(_items[^1]); // 二次调用确保虚拟化容器生成后仍在底部
+                if (_items.Count > 0)
+                {
+                    MsgList.ScrollIntoView(_items[^1]);
+                    MsgList.UpdateLayout();
+                    MsgList.ScrollIntoView(_items[^1]); // 二次调用确保虚拟化容器生成后仍在底部
+                }
             }
+            catch { /* 虚拟化时序问题不致命，忽略 */ }
         });
     }
 
@@ -41,12 +45,16 @@ public partial class MessagePanel : Window
     {
         Dispatcher.BeginInvoke(() =>
         {
-            if (_items.Count > 0)
+            try
             {
-                _lastSender = _items[^1].Sender;
-                TargetBox.Text = _items[^1].Sender;
-                MsgList.ScrollIntoView(MsgList.Items[^1]);
+                if (_items.Count > 0)
+                {
+                    _lastSender = _items[^1].Sender;
+                    TargetBox.Text = _items[^1].Sender;
+                    MsgList.ScrollIntoView(MsgList.Items[^1]);
+                }
             }
+            catch { /* 虚拟化时序问题不致命，忽略 */ }
         });
     }
 

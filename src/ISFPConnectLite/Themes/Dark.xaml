@@ -443,7 +443,11 @@
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <ScrollContentPresenter Grid.Column="0" Grid.Row="0"/>
+                        <!-- PART_ScrollContentPresenter 命名必须保留：ListBox 虚拟化与
+                             ScrollIntoView 依赖此名字查找内容宿主；缺省会抛 NRE -->
+                        <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                                Grid.Column="0" Grid.Row="0"
+                                                CanContentScroll="{TemplateBinding CanContentScroll}"/>
                         <ScrollBar Grid.Column="1" Grid.Row="0" Name="PART_VerticalScrollBar"
                                    Value="{TemplateBinding VerticalOffset}"
                                    Maximum="{TemplateBinding ScrollableHeight}"
