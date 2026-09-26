@@ -1,4 +1,4 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== palette ===== -->
@@ -404,31 +404,8 @@
         </Style.Triggers>
     </Style>
 
-    <!-- 应用到消息列表和全局 ScrollViewer -->
     <!-- 应用到消息列表：重写 ListBox 的 ControlTemplate 内嵌 SlimScrollViewer -->
-    <Style x:Key="MsgListBoxSlim" TargetType="ListBox">
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
-        <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ListBox">
-                    <Grid>
-                        <ScrollViewer Style="{StaticResource SlimScrollViewer}" Focusable="False"
-                                      Padding="{TemplateBinding Padding}">
-                            <ItemsPresenter/>
-                        </ScrollViewer>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.55"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
+    <!-- 注意：SlimScrollViewer/SlimScrollBar 必须定义在本样式之前（StaticResource 前向查找） -->
 
     <Style x:Key="SlimScrollViewer" TargetType="ScrollViewer">
         <Setter Property="Template">
@@ -460,6 +437,30 @@
                                    ViewportSize="{TemplateBinding ViewportWidth}"
                                    Style="{StaticResource SlimScrollBar}"/>
                     </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="MsgListBoxSlim" TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <Grid>
+                        <ScrollViewer Style="{StaticResource SlimScrollViewer}" Focusable="False"
+                                      Padding="{TemplateBinding Padding}">
+                            <ItemsPresenter/>
+                        </ScrollViewer>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.55"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

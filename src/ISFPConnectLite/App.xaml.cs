@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -9,6 +10,21 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // 全局异常落盘，便于排查崩溃
+        DispatcherUnhandledException += (_, args) =>
+        {
+            try
+            {
+                string log = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.AppendAllText(log,
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {args.Exception.GetType().Name}: {args.Exception.Message}\n{args.Exception.StackTrace}\n\n");
+            }
+            catch { }
+            MessageBox.Show($"发生错误: {args.Exception.Message}", "ISFP-Connect-Lite",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            args.Handled = true;
+        };
 
         // 统一使用 PNG：窗口/任务栏图标从 png 加载
         try
