@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ISFPConnectLite</RootNamespace>
+    <AssemblyName>ISFP-Connect-Lite</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- exe 鍥炬爣锛氭瀯寤哄墠浠?assets/logo.png 鑷姩鐢熸垚 assets/logo.ico锛堟崲 png 鍗宠嚜鍔ㄦ洿鏂帮級 -->
+    <ApplicationIcon Condition="Exists('assets\logo.ico')">assets\logo.ico</ApplicationIcon>
+    <Version>0.1.0</Version>
+    <FileVersion>0.1.0</FileVersion>
+    <AssemblyVersion>0.1.0</AssemblyVersion>
+    <InformationalVersion>ISFP-Connect-Lite v0.1.0</InformationalVersion>
+    <LangVersion>latest</LangVersion>
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="assets\logo.png" />
+    <None Update="README.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- 宓屽叆 ISFP-xLink 鎻掍欢 zip 鍒?exe锛屽畨瑁呮椂瑙ｅ帇鍒?X-Plane/Resources/plugins -->
+  <ItemGroup>
+    <EmbeddedResource Include="plugin\ISFP_xLink.zip" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.12" />
+  </ItemGroup>
+
+  <!-- 鏋勫缓鍓嶄粠 logo.png 鐢熸垚 logo.ico -->
+  <Target Name="GenerateIco" BeforeTargets="PrepareForBuild">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\build\mkico.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot;" />
+  </Target>
+
+</Project>

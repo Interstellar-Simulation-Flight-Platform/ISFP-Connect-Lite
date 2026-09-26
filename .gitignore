@@ -1,0 +1,35 @@
+# Build artifacts
+bin/
+obj/
+out/
+publish/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# Windows
+Thumbs.db
+desktop.ini
+$tf/
+
+# Runtime generated
+config.json
+
+# Docs & bundled plugin archive
+docs/
+src/ISFPConnectLite/plugin/*.zip
+
+# Logs
+*.log
+
+# Test artifacts
+TestResults/

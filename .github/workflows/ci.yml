@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  PROJECT: src/ISFPConnectLite/ISFPConnectLite.csproj
+  PUBLISH_DIR: publish
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore ${{ env.PROJECT }}
+
+      - name: Protocol self-test
+        run: dotnet run --project ${{ env.PROJECT }} -- --selftest
+
+      - name: Build (Debug)
+        run: dotnet build ${{ env.PROJECT }} -c Debug --no-restore
+
+      - name: Publish single-file (self-contained x64)
+        run: >
+          dotnet publish ${{ env.PROJECT }}
+          -c Release -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o ${{ env.PUBLISH_DIR }}
+
+      - name: Publish single-file (framework-dependent)
+        run: >
+          dotnet publish ${{ env.PROJECT }}
+          -c Release -r win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -o ${{ env.PUBLISH_DIR }}/framework-dependent
+
+      - name: Upload artifacts (every build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ISFP-Connect-Lite-${{ github.sha }}
+          path: |
+            ${{ env.PUBLISH_DIR }}/*.exe
+            ${{ env.PUBLISH_DIR }}/framework-dependent/*.exe
+          if-no-files-found: error
+
+      - name: Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Compress-Archive -Path "${{ env.PUBLISH_DIR }}\ISFP-Connect-Lite.exe" -DestinationPath "ISFP-Connect-Lite-$tag-win-x64.zip" -Force
+          Compress-Archive -Path "${{ env.PUBLISH_DIR }}\framework-dependent\ISFP-Connect-Lite.exe" -DestinationPath "ISFP-Connect-Lite-$tag-win-x64-framework-dependent.zip" -Force
+          Get-ChildItem *.zip | ForEach-Object { $_.FullName }
+
+      - name: Create GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ISFP-Connect-Lite-*-win-x64.zip
+            ISFP-Connect-Lite-*-win-x64-framework-dependent.zip
