@@ -4,8 +4,23 @@ on:
   push:
     branches: [main, master]
     tags: ['v*']
+    # 文档类变更不触发构建（注意：v* 标签指向的提交若只含这些文件，Release 也不会跑）
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'LICENSE.*'
+      - 'docs/**'
+      - '.gitignore'
+      - '.github/**'
+      - '!.github/workflows/ci.yml'
   pull_request:
     branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'LICENSE.*'
+      - 'docs/**'
+      - '.gitignore'
   workflow_dispatch:
 
 env:
