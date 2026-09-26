@@ -24,6 +24,9 @@ public partial class MessagePanel : Window
 
         TargetText.Text = $"  ·  {net.MyCallsign}";
 
+        // 记住上次位置：首次以主窗口右侧为锚点，之后恢复上次关闭时的位置
+        PositionAtSavedOrAnchor();
+
         // 打开时定位到最新消息
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
         {
@@ -38,6 +41,46 @@ public partial class MessagePanel : Window
             }
             catch { /* 虚拟化时序问题不致命，忽略 */ }
         });
+    }
+
+    /// <summary>上次窗口位置（跨打开/关闭保持一致），屏幕边界内才恢复。</summary>
+    private static Point? LastLocation { get; set; }
+
+    private void PositionAtSavedOrAnchor()
+    {
+        double x, y;
+        if (LastLocation is { } p
+            && p.X >= 0 && p.Y >= 0
+            && p.X + Width <= SystemParameters.VirtualScreenWidth
+            && p.Y + Height <= SystemParameters.VirtualScreenHeight)
+        {
+            (x, y) = (p.X, p.Y);
+        }
+        else
+        {
+            // 锚定主窗口右侧（不遮挡 bar），垂直居中对齐
+            var main = Application.Current.MainWindow;
+            if (main != null)
+            {
+                x = main.Left - Width - 12;
+                y = main.Top;
+            }
+            else
+            {
+                x = (SystemParameters.WorkArea.Width - Width) / 2;
+                y = (SystemParameters.WorkArea.Height - Height) / 2;
+            }
+        }
+        // 防负值（多屏左边缘）
+        Left = Math.Max(0, x);
+        Top = Math.Max(0, y);
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // 记录关闭位置供下次打开恢复
+        LastLocation = new Point(Left, Top);
+        base.OnClosing(e);
     }
 
     /// <summary>新消息加入历史后滚动到底部（MainWindow 写入后调用）。</summary>
