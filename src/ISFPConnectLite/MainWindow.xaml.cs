@@ -122,6 +122,10 @@ public partial class MainWindow : Window
             _settings.AircraftIcao = equip;
             _settings.AirlineIcao = airline;
             _settings.Save();
+            // 同步到 NetworkModel：FsdSession 创建时快照这些值用于 PI:GEN 应答，
+            // 不同步会导致断线后改机型/航司不生效（需重启软件）
+            _net.AircraftIcao = equip;
+            _net.AirlineIcao = airline;
 
             if (!_net.Xlink.Connected)
             {
@@ -340,9 +344,13 @@ public partial class MainWindow : Window
         {
             _settings = dlg.Result;
             _settings.Save();
+            // 机型/航司（PIR 应答用）立即同步到当前 NetworkModel：
+            // 在线时改设置也即时生效，无需重连
+            _net.AircraftIcao = _settings.AircraftIcao;
+            _net.AirlineIcao = _settings.AirlineIcao;
             if (FsdSessionReady())
             {
-                ShowToast("设置已保存，部分项将在下次连线时生效");
+                ShowToast("设置已保存，机型应答已即时生效");
             }
         }
     }
