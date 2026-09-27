@@ -41,6 +41,8 @@ public sealed class FsdSession : IAsyncDisposable
     public event Action<string, string>? TextReceived;    // from, message
     public event Action<string>? MetarReceived;           // raw metar text
     public event Action<string, string>? PlaneInfoRequested; // from, type (PIR/FSIPIR)
+    /// <summary>对方机型响应到达（from, type=PI|FSIPI, payload fields, raw line）。</summary>
+    public event Action<string, string, string[], string>? PlaneInfoReceived;
 
     private const ushort ClientId = 55538;             // xPilot-assigned id (unofficial use)
     private const string ClientName = "ISFP-Connect-Lite";
@@ -145,6 +147,8 @@ public sealed class FsdSession : IAsyncDisposable
             case "#SB":
                 if (p.Type == "PIR" || p.Type == "FSIPIR")
                     PlaneInfoRequested?.Invoke(p.From, p.Type);
+                else if (p.Type == "PI" || p.Type == "FSIPI")
+                    PlaneInfoReceived?.Invoke(p.From, p.Type, p.Fields, p.Raw);
                 break;
 
             case "#DP":
@@ -188,10 +192,11 @@ public sealed class FsdSession : IAsyncDisposable
     }
 
     public void UpdateFlightState(double lat, double lon, int altTrueFt, int gsKt,
-        double pitchDeg, double bankDeg, double headingDeg, int corrFt, char xpdrMode, string squawk)
+        double pitchDeg, double bankDeg, double headingDeg, int corrFt, char xpdrMode, string squawk,
+        bool onGround = false)
     {
         _lat = lat; _lon = lon; _altFt = altTrueFt; _gsKt = gsKt;
-        _pbh = FsdPacket.EncodePbh(pitchDeg, bankDeg, headingDeg);
+        _pbh = FsdPacket.EncodePbh(pitchDeg, bankDeg, headingDeg, onGround);
         _corrFt = corrFt;
         _xpdrMode = xpdrMode;
         _squawk = squawk;

@@ -24,6 +24,8 @@ public sealed class NetworkModel : IDisposable
     public event Action<FlightData>? LocalFlightData;
     /// <summary>Any FSD text message received (from, message). Fires regardless of message panel state.</summary>
     public event Action<string, string>? TextReceived;
+    /// <summary>FSD 连接意外断开（网络闪断/被踢/服务器故障），非用户主动断开。</summary>
+    public event Action? FsdUnexpectedlyDisconnected;
 
     public string MyCallsign { get; private set; } = "";
     public string MyCid { get; private set; } = "";
@@ -62,7 +64,9 @@ public sealed class NetworkModel : IDisposable
         session.Log += m => Log?.Invoke(m);
         session.PositionPacketReceived += OnFsdPacket;
         session.PlaneInfoRequested += OnPlaneInfoRequested;
+        session.PlaneInfoReceived += OnPlaneInfoReceived;
         session.TextReceived += (from, msg) => TextReceived?.Invoke(from, msg);
+        session.StateChanged += s => { if (s == FsdState.Disconnected) OnFsdSocketDown(); };
         Fsd = session;
         await session.ConnectAsync();
         session.StartReporting();
@@ -75,14 +79,45 @@ public sealed class NetworkModel : IDisposable
             var s = Fsd;
             Fsd = null;
             s.PositionPacketReceived -= OnFsdPacket;
+            s.PlaneInfoRequested -= OnPlaneInfoRequested;
+            s.PlaneInfoReceived -= OnPlaneInfoReceived;
+            // StateChanged 订阅保留：StopFsdAsync 主动断开也会触发 OnFsdSocketDown →
+            // ClearRoster（幂等），保证 xLink 清空。先置 Fsd=null 防止重复处理。
             await s.DisconnectAsync();
         }
+        ClearRoster();
+    }
+
+    /// <summary>FSD 断线（含主动与异常掉线）：清理本地状态并通知 UI。</summary>
+    private void OnFsdSocketDown()
+    {
+        // StopFsdAsync 主动路径已清理过；异常掉线路径在此清理
+        if (Fsd != null)
+        {
+            ClearRoster();
+            FsdUnexpectedlyDisconnected?.Invoke();
+        }
+    }
+
+    private void ClearRoster()
+    {
         lock (_gate)
         {
             _atc.Clear();
             _players.Clear();
+            _atcLastSeen.Clear();
+            _plLastSeen.Clear();
         }
         RosterChanged?.Invoke();
+        // 关键：向 xLink 推送空列表，清掉残留的 CSL 玩家与管制标注
+        _ = PushRosterNowAsync();
+    }
+
+    /// <summary>无视 3s 定时器节流，立即推送当前（可能为空的）roster。</summary>
+    private async Task PushRosterNowAsync()
+    {
+        try { await PushRosterAsync(); }
+        catch (Exception ex) { Log?.Invoke($"[xlink] roster clear push failed: {ex.Message}"); }
     }
 
     // ---------- fsd packet handling ----------
@@ -105,13 +140,19 @@ public sealed class NetworkModel : IDisposable
                 break;
 
             case "@":
+            case "^":
+            case "#SL":
+            case "#ST":
+                // @ 是常规位置；^ #SL #ST 是协议101快速位置变体（坐标/姿态同构，
+                // 无 squawk/地速字段）——统一走 TryGetPilotPosition
                 if (FsdParser.TryGetPilotPosition(p, out var pp) && pp.Callsign != MyCallsign)
                 {
                     lock (_gate)
                     {
                         var tr = _players.TryGetValue(pp.Callsign, out var existing)
                             ? existing : new PlayerTrack { Callsign = pp.Callsign };
-                        UpdateFromPbh(tr, pp);
+                        bool isFast = p.Kind != "@";
+                        UpdateFromPbh(tr, pp, overwriteGs: !isFast);
                         _players[pp.Callsign] = tr;
                         _plLastSeen[pp.Callsign] = DateTime.UtcNow;
 
@@ -134,6 +175,46 @@ public sealed class NetworkModel : IDisposable
                 }
                 changed = true;
                 break;
+
+            case "#DA":
+                // ATC 断连广播：立即移除，不等 45s 超时
+                lock (_gate)
+                {
+                    _atc.Remove(p.From);
+                    _atcLastSeen.Remove(p.From);
+                }
+                changed = true;
+                break;
+
+            case "#AP":
+                // 玩家登录广播：提前建档（首个位置包到来前 xLink 至少知道有此人）
+                if (p.Fields.Length > 0 && p.From != MyCallsign)
+                {
+                    lock (_gate)
+                    {
+                        if (!_players.ContainsKey(p.From))
+                        {
+                            _players[p.From] = new PlayerTrack { Callsign = p.From };
+                            _plLastSeen[p.From] = DateTime.UtcNow;
+                            changed = true;
+                        }
+                    }
+                }
+                break;
+
+            case "#AA":
+                // 管制登录广播：占位（%包会带来完整坐标），此处仅刷新存活时间
+                lock (_gate)
+                {
+                    _atcLastSeen[p.From] = DateTime.UtcNow;
+                }
+                break;
+
+            case "$!!":
+                // 被管理员踢出：显示原因后按普通断线处理（服务器随后会断开连接）
+                string kickReason = p.Fields.Length > 0 ? string.Join(":", p.Fields) : "";
+                Log?.Invoke($"[fsd] killed by admin: {kickReason}");
+                break;
         }
         if (changed) RosterChanged?.Invoke();
     }
@@ -141,12 +222,13 @@ public sealed class NetworkModel : IDisposable
     private readonly Dictionary<string, DateTime> _atcLastSeen = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _plLastSeen = new(StringComparer.OrdinalIgnoreCase);
 
-    private static void UpdateFromPbh(PlayerTrack tr, PilotPositionData pp)
+    private static void UpdateFromPbh(PlayerTrack tr, PilotPositionData pp, bool overwriteGs = true)
     {
         tr.Lat = pp.Lat;
         tr.Lon = pp.Lon;
         tr.AltFt = pp.AltFt;
-        tr.GsKt = pp.GsKt;
+        // 快速位置包（^ #SL #ST）不携带地速，保留上一次 @ 包的值
+        if (overwriteGs) tr.GsKt = pp.GsKt;
         uint h = (pp.Pbh >> 2) & 0x3FF;
         uint b = (pp.Pbh >> 12) & 0x3FF;
         uint pi = (pp.Pbh >> 22) & 0x3FF;
@@ -167,6 +249,59 @@ public sealed class NetworkModel : IDisposable
             Fsd.SendPlaneInfo(from);
         }
         Log?.Invoke($"[fsd] plane info request from {from} ({type}) -> answered");
+    }
+
+    /// <summary>
+    /// 解析对方机型响应写入 PlayerTrack：
+    /// PI:GEN  → Fields=[KEY=VALUE...]（EQUIPMENT=A320 形式）
+    /// FSIPI   → Fields=[0, airline, equipment, "", "", "", "", "", model串]
+    /// </summary>
+    private void OnPlaneInfoReceived(string from, string type, string[] fields, string raw)
+    {
+        string? equipment = null, family = null;
+        try
+        {
+            if (type == "PI" && fields.Length > 0)
+            {
+                foreach (var kv in fields)
+                {
+                    int eq = kv.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string key = kv[..eq].Trim().ToUpperInvariant();
+                    string val = kv[(eq + 1)..].Trim();
+                    if (key == "EQUIPMENT" && val.Length >= 3)
+                        equipment = val.ToUpperInvariant();
+                    else if (key == "CSL")
+                        family = val;
+                }
+            }
+            else if (type == "FSIPI" && fields.Length >= 9)
+            {
+                // #SB<from>:<to>:FSIPI:0:<airline>:<equipment>::...::<model>
+                // ParseWithTo 消耗了 from:to:type → Fields=[0, airline, equipment, ... , model串]
+                string eq = fields[2].Trim();
+                if (eq.Length >= 3) equipment = eq.ToUpperInvariant();
+                string model = fields[^1].Trim();
+                if (model.Length > 0) family = model;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log?.Invoke($"[fsd] plane info parse error from {from}: {ex.Message}");
+        }
+
+        if (string.IsNullOrEmpty(equipment)) return;
+
+        lock (_gate)
+        {
+            if (_players.TryGetValue(from, out var tr))
+            {
+                tr.Aircraft = equipment!;
+                if (!string.IsNullOrEmpty(family)) tr.Family = family;
+                _plLastSeen[from] = DateTime.UtcNow;
+            }
+        }
+        Log?.Invoke($"[fsd] plane info from {from}: {equipment} ({family ?? "-"})");
     }
 
     private void GcStale()
@@ -197,9 +332,11 @@ public sealed class NetworkModel : IDisposable
             int corrFt = (int)Math.Round(fd.AltitudeMsl - fd.Altitude);
             char mode = fd.Squark == "N" ? 'N' : 'S';
             string squawk = fd.Transponder.ToString("D4");
+            // on_ground：xLink 无直接字段，用起落架放下近似（地面滑行/停放时起落架为放下状态）
+            bool onGround = fd.GearDeploy > 0;
             Fsd.UpdateFlightState(fd.Latitude, fd.Longitude, (int)Math.Round(fd.AltitudeMsl),
                 (int)Math.Round(fd.Groundspeed), fd.Pitch, fd.Bank, fd.TrueHeading,
-                corrFt, mode, squawk);
+                corrFt, mode, squawk, onGround);
         }
     }
 

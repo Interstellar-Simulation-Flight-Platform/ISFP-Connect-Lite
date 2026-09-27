@@ -24,6 +24,13 @@ public static class FsdSelfTest
         Check(((pbh >> 12) & 0x3FF) == (uint)Math.Round(340 * 1023 / 360.0), "PBH bank field (-20deg)");
         Check(((pbh >> 2) & 0x3FF) == (uint)Math.Round(90 * 1023 / 360.0), "PBH heading field");
 
+        // on_ground flag: bit1 (服务器解码 onGround = (pbh & 0b10) >> 1)
+        Check((FsdPacket.EncodePbh(0, 0, 0, onGround: false) & 0b10) == 0, "PBH on_ground clear (default)");
+        Check((FsdPacket.EncodePbh(0, 0, 0, onGround: true) & 0b10) == 0b10, "PBH on_ground set");
+        var pbhGround = FsdPacket.EncodePbh(10, -20, 90, onGround: true);
+        Check(((pbhGround & 0b10) >> 1) == 1 &&
+              ((pbhGround >> 22) & 0x3FF) == 28u, "PBH on_ground coexists with angles");
+
         // packet builders
         var ap = FsdPacket.AddPilot("DAL625", "1400000", "secret", 1, 9, 16, "Zhang San");
         Check(ap == "#APDAL625:SERVER:1400000:secret:1:9:16:Zhang San", "#AP layout: " + ap);
@@ -74,6 +81,30 @@ public static class FsdSelfTest
         var tmIn = FsdParser.Parse("#TMZGGG_TWR:CSN3081:contact delivery 121.7");
         Check(tmIn.Kind == "#TM" && tmIn.From == "ZGGG_TWR" && tmIn.To == "CSN3081" &&
               tmIn.Type == "contact delivery 121.7", "parse #TM");
+
+        // parser: fast position variants (protocol 101)
+        // ^from:lat:lon:altTrue:altAgl:pbh:vel... (7+ fields)
+        var fast = FsdParser.Parse("^CSA1234:22.7:114.3:32060.5:1500.0:1712:0.001:0.0002:0.0005:0:0:0:-0.4");
+        Check(FsdParser.TryGetPilotPosition(fast, out var fp) && fp.Callsign == "CSA1234" &&
+              Math.Abs(fp.Lat - 22.7) < 1e-6 && fp.AltFt == 32060 && fp.Pbh == 1712, "parse ^ fast pos");
+        // #SL slow variant (same layout as ^)
+        var slow = FsdParser.Parse("#SLCCA987:40.0:-73.0:10000:500:4290776072");
+        Check(FsdParser.TryGetPilotPosition(slow, out var sp) && sp.Callsign == "CCA987" && sp.Pbh == 4290776072u, "parse #SL");
+        // #ST stopped variant (6 fields exactly)
+        var stopped = FsdParser.Parse("#STCSN3081:23.0:113.0:35.2:34.9:1024");
+        Check(FsdParser.TryGetPilotPosition(stopped, out var stp) && stp.Callsign == "CSN3081" &&
+              Math.Abs(stp.Lat - 23.0) < 1e-6 && stp.AltFt == 35, "parse #ST");
+
+        // parser: PI:GEN response (EQUIPMENT extraction happens in NetworkModel; here verify Fields layout)
+        // ParseWithTo: From=CSN3081 To=CCA987 Type=PI Fields=[GEN, EQUIPMENT=..., AIRLINE=...]
+        var pig = FsdParser.Parse("#SBCSN3081:CCA987:PI:GEN:EQUIPMENT=B738:AIRLINE=CSN");
+        Check(pig.Kind == "#SB" && pig.Type == "PI" && pig.From == "CSN3081" &&
+              pig.Fields.Length == 3 && pig.Fields[0] == "GEN" && pig.Fields[1] == "EQUIPMENT=B738", "parse PI:GEN fields");
+        // parser: FSIPI response
+        // #SB<from>:<to>:FSIPI:0:<airline>:<equipment>::...:<model> -> Fields=[0,airline,equipment,'','','','','',model] = 9
+        var fsi = FsdParser.Parse("#SBCSN3081:CCA987:FSIPI:0:CSN:B738::::::CSN B738 B-1234");
+        Check(fsi.Kind == "#SB" && fsi.Type == "FSIPI" && fsi.Fields.Length == 9 &&
+              fsi.Fields[2] == "B738" && fsi.Fields[8] == "CSN B738 B-1234", "parse FSIPI fields");
 
         // freq helpers
         Check(FsdPacket.FreqToTarget(122.800) == "@22800", "freq target 122.800");

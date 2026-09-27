@@ -7,12 +7,16 @@ public static class FsdPacket
     public const int SimTypeXp11 = 15;
     public const int SimTypeXp12 = 16;
 
-    public static uint EncodePbh(double pitchDeg, double bankDeg, double headingDeg)
+    /// <summary>
+    /// 编码 PBH 位域。bit1 = on_ground（1=在地面），bit2-11 heading，bit12-21 bank，bit22-31 pitch。
+    /// 服务器解码规则：onGround = (pbh &amp; 0b10) &gt;&gt; 1。
+    /// </summary>
+    public static uint EncodePbh(double pitchDeg, double bankDeg, double headingDeg, bool onGround = false)
     {
         uint p = Quantize(pitchDeg);
         uint b = Quantize(bankDeg);
         uint h = Quantize(headingDeg);
-        return (p << 22) | (b << 12) | (h << 2);
+        return (p << 22) | (b << 12) | (h << 2) | (onGround ? 2u : 0u);
     }
 
     private static uint Quantize(double deg)

@@ -38,6 +38,7 @@ public partial class MainWindow : Window
         _net.LocalFlightData += OnFlightData;
         _net.RosterChanged += () => Post(UpdateRoster);
         _net.TextReceived += OnNetworkTextReceived;
+        _net.FsdUnexpectedlyDisconnected += OnFsdUnexpectedlyDisconnected;
 
         _rosterTimer.Interval = TimeSpan.FromSeconds(3);
         _rosterTimer.Tick += async (_, _) => await _net.PushRosterAsync();
@@ -168,6 +169,20 @@ public partial class MainWindow : Window
         try { await _net.StopFsdAsync(); } catch { }
         SwitchToLogin();
         ShowToast("已断开连接");
+    }
+
+    /// <summary>FSD 异常掉线（非用户主动断开）：停定时器、关消息面板、回登录态并提示。</summary>
+    private void OnFsdUnexpectedlyDisconnected()
+    {
+        Post(() =>
+        {
+            _rosterTimer.Stop();
+            MsgBtn.IsChecked = false;
+            _msgPanel?.Close();
+            _msgPanel = null;
+            SwitchToLogin();
+            ShowToast("与 ISFP 网络断开连接");
+        });
     }
 
     private void SwitchToOnline(string callsign)

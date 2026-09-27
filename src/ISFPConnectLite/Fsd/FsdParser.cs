@@ -192,27 +192,55 @@ public static class FsdParser
     public static bool TryGetPilotPosition(ParsedPacket p, out PilotPositionData data)
     {
         data = new PilotPositionData();
-        if (p.Kind != "@") return false;
-        var f = p.Fields;
-        // @mode:from:squawk:rating:lat:lon:alt:gs:pbh:corr
-        if (f.Length < 10) return false;
-        try
+        if (p.Kind == "@")
         {
-            data = new PilotPositionData
+            var f = p.Fields;
+            // @mode:from:squawk:rating:lat:lon:alt:gs:pbh:corr
+            if (f.Length < 10) return false;
+            try
             {
-                Callsign = f[1],
-                Mode = f[0] is { Length: > 0 } m ? m[0] : 'S',
-                Squawk = f[2],
-                Rating = int.Parse(f[3]),
-                Lat = double.Parse(f[4], System.Globalization.CultureInfo.InvariantCulture),
-                Lon = double.Parse(f[5], System.Globalization.CultureInfo.InvariantCulture),
-                AltFt = (int)double.Parse(f[6], System.Globalization.CultureInfo.InvariantCulture),
-                GsKt = (int)double.Parse(f[7], System.Globalization.CultureInfo.InvariantCulture),
-                Pbh = uint.Parse(f[8], System.Globalization.CultureInfo.InvariantCulture),
-            };
-            return true;
+                data = new PilotPositionData
+                {
+                    Callsign = f[1],
+                    Mode = f[0] is { Length: > 0 } m ? m[0] : 'S',
+                    Squawk = f[2],
+                    Rating = int.Parse(f[3]),
+                    Lat = double.Parse(f[4], System.Globalization.CultureInfo.InvariantCulture),
+                    Lon = double.Parse(f[5], System.Globalization.CultureInfo.InvariantCulture),
+                    AltFt = (int)double.Parse(f[6], System.Globalization.CultureInfo.InvariantCulture),
+                    GsKt = (int)double.Parse(f[7], System.Globalization.CultureInfo.InvariantCulture),
+                    Pbh = uint.Parse(f[8], System.Globalization.CultureInfo.InvariantCulture),
+                };
+                return true;
+            }
+            catch { return false; }
         }
-        catch { return false; }
+
+        // 快速位置变体 ^ #SL #ST: from:lat:lon:altTrue:altAgl:pbh[:vel...]
+        // （#ST 停止变体无速度向量；$ 视角都无 squawk/mode，沿用默认）
+        if (p.Kind is "^" or "#SL" or "#ST")
+        {
+            var f = p.Fields;
+            if (f.Length < 6) return false;
+            try
+            {
+                data = new PilotPositionData
+                {
+                    Callsign = f[0],
+                    Mode = 'N',
+                    Squawk = "",
+                    Lat = double.Parse(f[1], System.Globalization.CultureInfo.InvariantCulture),
+                    Lon = double.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture),
+                    AltFt = (int)double.Parse(f[3], System.Globalization.CultureInfo.InvariantCulture),
+                    GsKt = 0, // 快速包不携带地速，保留上次值（NetworkModel 侧不覆盖）
+                    Pbh = uint.Parse(f[5], System.Globalization.CultureInfo.InvariantCulture),
+                };
+                return true;
+            }
+            catch { return false; }
+        }
+
+        return false;
     }
 }
 
